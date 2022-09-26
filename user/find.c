@@ -23,8 +23,8 @@ char *fmtname(char *path)
 void find(char *path, char *name){
     char buf[512], *p;
     int fd;
-    struct dirent de;//文件和其他文件的联系，type属性用来判断是目录还是单个文件
-    struct stat st;//文件信息包括文件名字，大小
+    struct dirent de;//文件和其他文件的联系，
+    struct stat st;//文件信息包括文件名字，大小,type属性用来判断是目录还是单个文件
 
     //按路径打开文件（广义文件包括目录和文件）
     if((fd = open(path, 0)) < 0){//如果文件路径是错的，就返回-1

@@ -8,7 +8,6 @@ void prime_solution(int p1[],int p2[])
     
     if(pid==0){//子线程
       int to_prime[1];	
-      // close(p1[FDWT]);
       if(read(p1[0],to_prime,sizeof(int))!=sizeof(int))
       {
 	      close(p1[0]);
@@ -30,10 +29,13 @@ void prime_solution(int p1[],int p2[])
         close(p2[1]);
         pipe(p1);
         prime_solution(p2,p1);
+        close(p1[1]);
+        close(p2[0]);
         exit(0); 
     }
     else if(pid >0){
         close(p1[0]);
+        close(p1[1]);
         close(p2[0]);
         close(p2[1]);
         wait(0);
@@ -54,6 +56,9 @@ void prime_solution(int p1[],int p2[])
     }
     close(p1[1]);
     prime_solution(p1,p2);
-   wait(0);
-   exit(0);
+    close(p1[0]);
+    close(p2[0]);
+    close(p2[1]);
+    wait(0);
+    exit(0);
  }
