@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "user.h": "c",
+        "riscv.h": "c",
+        "proc.h": "c",
+        "compare": "c",
+        "limits": "c",
+        "new": "c",
+        "syscall.h": "c",
+        "file.h": "c"
+    }
+}
