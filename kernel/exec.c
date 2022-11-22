@@ -111,6 +111,9 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
+  pvmdealloc(p->k_pagetable,p->sz,0);
+  if(pvmcopy(pagetable, p->k_pagetable, 0, sz) < 0)
+    goto bad;
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer

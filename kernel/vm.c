@@ -541,7 +541,7 @@ pkfreewalk_unmap(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
-int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
+int pvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -562,16 +562,29 @@ int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
     if ((*pte & PTE_V) == 0)
       panic("ukvmcopy: page not present");
     pa = PTE2PA(*pte);
-    // 清除原先 PTE 中的 PTE_U 标志位
+    //按照要求,需要将对应的用户的页表的USER位置取反（内核进程不能被用户所访问）
+    //从而实现对应的用户页表复制到内核页表的底层操作
     flags = PTE_FLAGS(*pte) & (~PTE_U);
     if (mappages(new, i, PGSIZE, (uint64)pa, flags) != 0)
     {
-      // 注意 dofree 参数设置为 0, 我们只清理映射, 不清理物理内存
+      // 根据uvmunmap的接口，当dofree=0的时候，不清空对应物理内存
       uvmunmap(new, 0, i / PGSIZE, 0);
       return -1;
     }
   }
 
   return 0;
+}
+
+uint64 pvmdealloc(pagetable_t pagetable,uint64 oldsz, uint64 newsz){
+
+  if(newsz >= oldsz){//如果新进程比原进程页表更大
+    return oldsz;
+  }
+  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
+    uvmunmap(pagetable,PGROUNDUP(newsz),(PGROUNDUP(oldsz)-PGROUNDUP(newsz))/PGSIZE,0);
+  }
+  
+  return newsz;
 }
 

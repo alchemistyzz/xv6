@@ -246,6 +246,7 @@ userinit(void)
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
+  pvmcopy(p->pagetable,p->k_pagetable,0,p->sz);
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -268,8 +269,11 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    if(pvmcopy(p->pagetable, p->k_pagetable, p->sz, sz) < 0)
+      return -1;
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    pvmdealloc(p->k_pagetable, p->sz, p->sz + n);
   }
   p->sz = sz;
   return 0;
@@ -296,7 +300,13 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  //add
+  if(pvmcopy(np->pagetable, np->k_pagetable, 0, np->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  //
   np->parent = p;
 
   // copy saved user registers.
@@ -689,7 +699,7 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 {
   struct proc *p = myproc();
   if(user_src){
-    return copyin(p->pagetable, dst, src, len);
+    return copyin_new(p->pagetable, dst, src, len);
   } else {
     memmove(dst, (char*)src, len);
     return 0;
