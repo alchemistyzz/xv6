@@ -168,7 +168,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 }
 
 // Remove npages of mappings starting from va. va must be
-// page-aligned. The mappings must exist.
+// page-aligned. The mappings must exist.kvmmap
 // Optionally free the physical memory.
 // If do_free != 0, physical memory will be freed
 void
@@ -449,4 +449,93 @@ test_pagetable()
   uint64 satp = r_satp();
   uint64 gsatp = MAKE_SATP(kernel_pagetable);
   return satp != gsatp;
+}
+
+void
+vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+
+  for(int i=0;i<512;i++){
+      pte_t pte = pagetable[i];
+      if((pte & PTE_V)){
+          pagetable_t  pt_first = (pagetable_t)PTE2PA(pte);
+          printf("||%d: pte %p pa %p\n", i, pte, pt_first);
+
+          for(int j=0;j<512;j++){
+              pte_t chile_pte = pt_first[j];
+              if(chile_pte & PTE_V){
+                  pagetable_t pt_second = (pagetable_t)PTE2PA(chile_pte);
+                  printf("|| ||%d: pte %p pa %p\n", j, chile_pte, pt_second);
+                  for(int k=0;k<512;k++){
+                      pte_t cchild_pte = pt_second[k];
+                      if(cchild_pte&PTE_V){
+                        printf("|| || ||%d: pte %p pa %p\n", k, cchild_pte, PTE2PA(cchild_pte));
+                      }
+                  }
+              }           
+          }
+
+      }
+  }
+  
+}
+void
+pvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("pvmmap");
+}
+void
+pvminithart(pagetable_t pagetable)
+{
+  w_satp(MAKE_SATP(pagetable));
+  sfence_vma();
+}
+
+pagetable_t
+pvminit()
+{
+  pagetable_t k_pagetable = uvmcreate();
+  if (k_pagetable == 0)
+    return 0;
+  memset(k_pagetable, 0, PGSIZE);
+   // uart registers
+  pvmmap(k_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+   // virtio mmio disk interface
+  pvmmap(k_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // CLINT
+  // pvmmap(k_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  pvmmap(k_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  pvmmap(k_pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  
+  // map kernel data and the physical RAM we'll make use of.
+  pvmmap(k_pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  pvmmap(k_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return k_pagetable;
+}
+
+// Free page table and unmap PTE without freeing physical memory pages.
+void
+pkfreewalk_unmap(pagetable_t pagetable)
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      uint64 child = PTE2PA(pte);
+      pkfreewalk_unmap((pagetable_t)child);
+      pagetable[i] = 0;
+    } else if(pte & PTE_V){
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
 }

@@ -37,6 +37,9 @@ procinit(void)
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
+
+      p->kstack_pa = (uint64)pa;
+
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
@@ -112,14 +115,27 @@ found:
     release(&p->lock);
     return 0;
   }
-
-  // An empty user page table.
+ // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
   }
+
+
+  //todo
+  //establish kernel stack mapping
+  p->k_pagetable = pvminit();
+  if(p->k_pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  pvmmap(p->k_pagetable, p->kstack, p->kstack_pa, PGSIZE, PTE_R | PTE_W);
+
+
+ 
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -139,8 +155,13 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  if(p->k_pagetable)
+    pkfreewalk_unmap(p->k_pagetable);
+  p->k_pagetable = 0; 
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -473,7 +494,12 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        //put the first address of p k_pagetable into the satp
+        pvminithart(p->k_pagetable);
         swtch(&c->context, &p->context);
+
+        kvminithart();//重新载入对应的全局内核页表
+        // printf("ishere");
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -697,3 +723,4 @@ procdump(void)
     printf("\n");
   }
 }
+
