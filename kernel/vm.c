@@ -336,6 +336,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -538,4 +539,37 @@ pkfreewalk_unmap(pagetable_t pagetable)
     }
   }
   kfree((void*)pagetable);
+}
+
+
+int pvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  // 防止 user virtual address 超过 PLIC
+  if (newsz < oldsz||PGROUNDUP(newsz) > PLIC)
+    return -1;
+
+  oldsz = PGROUNDUP(oldsz);
+  for (i = oldsz; i < newsz; i += PGSIZE)
+  {
+    if ((pte = walk(old, i, 0)) == 0)
+      panic("ukvmcopy: pte should exist");
+    if ((*pte & PTE_V) == 0)
+      panic("ukvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    // 因为是将用户态的页表转移到相应的内核页表中，因此对应的flags要清楚原先user的标记位
+    flags = PTE_FLAGS(*pte) & (~PTE_U);
+    if (mappages(new, i, PGSIZE, (uint64)pa, flags) != 0)
+    {
+      // 根据uvmap的接口，如果对应的dofree =1 的话
+      //就会释放对应的物理地址空间，但很明显这里是不能释放的
+      uvmunmap(new, 0, i / PGSIZE, 0);
+      return -1;
+    }
+  }
+
+  return 0;
 }
