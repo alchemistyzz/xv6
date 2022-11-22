@@ -241,7 +241,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-  pvmcopy(p->pagetable, p->k_pagetable, 0, p->sz);
+  // include user page table in kernel page table
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter

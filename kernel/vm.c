@@ -541,15 +541,17 @@ pkfreewalk_unmap(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
-
-int pvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
+int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
 
   // 防止 user virtual address 超过 PLIC
-  if (newsz < oldsz||PGROUNDUP(newsz) > PLIC)
+  if (PGROUNDUP(newsz) > PLIC)
+    return -1;
+
+  if (newsz < oldsz)
     return -1;
 
   oldsz = PGROUNDUP(oldsz);
@@ -560,12 +562,11 @@ int pvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
     if ((*pte & PTE_V) == 0)
       panic("ukvmcopy: page not present");
     pa = PTE2PA(*pte);
-    // 因为是将用户态的页表转移到相应的内核页表中，因此对应的flags要清楚原先user的标记位
+    // 清除原先 PTE 中的 PTE_U 标志位
     flags = PTE_FLAGS(*pte) & (~PTE_U);
     if (mappages(new, i, PGSIZE, (uint64)pa, flags) != 0)
     {
-      // 根据uvmap的接口，如果对应的dofree =1 的话
-      //就会释放对应的物理地址空间，但很明显这里是不能释放的
+      // 注意 dofree 参数设置为 0, 我们只清理映射, 不清理物理内存
       uvmunmap(new, 0, i / PGSIZE, 0);
       return -1;
     }
@@ -573,3 +574,4 @@ int pvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
 
   return 0;
 }
+
